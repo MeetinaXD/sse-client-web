@@ -64,7 +64,6 @@ export class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
 
   private _onMessageComing(name: string) {
     return async (event: MessageEvent) => {
-      console.log('receive', event)
       let { data } = event
       try {
         data = JSON.parse(data)
