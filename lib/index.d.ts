@@ -29,7 +29,7 @@ export interface SSEClientConfig {
     baseURL?: string;
     retry?: RetryConfig;
 }
-export type SSEClientSubscriberType = Record<string, ComingMessageHandler>;
+export type SSEClientSubscriberType = Record<string, unknown>;
 export declare class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
     private readonly event;
     private readonly url?;

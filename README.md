@@ -31,7 +31,7 @@ var { SSEClient } = require('sse-client-web')
 The UMD build is also available on unpkg:
 
 ```html
-<script src="https://unpkg.com/sse-client-web@1.2.0/lib/index.browser.js"></script>
+<script src="https://unpkg.com/sse-client-web@1.4.0/lib/index.browser.js"></script>
 ```
 
 You can find the library on `window.SSEClient`.
