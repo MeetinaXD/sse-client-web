@@ -82,8 +82,8 @@ import { SSEClient } from 'sse-client-web'
 
 type MySSEClient = {
   '/real-time-events': {
-    foo: (message: string) => void
-    bar: (message: number) => void
+    foo: string
+    bar: number
   }
 }
 

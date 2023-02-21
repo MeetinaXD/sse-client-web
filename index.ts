@@ -46,7 +46,7 @@ const defaultRetryConfig: Readonly<Required<RetryConfig>> = {
 
 Object.freeze(defaultRetryConfig)
 
-export type SSEClientSubscriberType = Record<string, ComingMessageHandler>
+export type SSEClientSubscriberType = Record<string, unknown>
 
 export class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
   private eventSubscribers: Record<string, ComingMessageHandler> = {}
