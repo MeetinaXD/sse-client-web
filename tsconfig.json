@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "strict": false,
+    "skipLibCheck": true,
+    "declaration": true, /* 生成相关的 '.d.ts' 文件。 */
+    "rootDir": ".",
+    "declarationDir": "./lib", /* '.d.ts' 文件输出目录 */
+    "emitDeclarationOnly": true, /* 只生成声明文件，不生成 js 文件*/
+  },
+  "include": ["index.ts"],
+  "exclude": [
+    "node_modules",
+    "./utils"
+  ]
+}

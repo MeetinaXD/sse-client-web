@@ -1,0 +1,10 @@
+utils/
+examples/
+test/
+node_modules/
+.DS_Store/
+index.ts
+rollup.config.js
+vitest.config.js
+tsconfig.json
+*.tgz
