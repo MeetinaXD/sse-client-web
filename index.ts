@@ -41,7 +41,7 @@ export interface SSEClientConfig {
 
 const defaultRetryConfig: Readonly<Required<RetryConfig>> = {
   retries: 3,
-  interval: 1000
+  interval: 1000,
 }
 
 Object.freeze(defaultRetryConfig)
@@ -172,7 +172,7 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
       this.retries[url] += 1
       if (this.retryConfig.retries && this.retries[url] >= this.retryConfig.retries) {
         console.error(`[SSEClient] Too many retry, this url is no longer subscribed: ${this.baseURL}${url}`, event)
-        this.unregister(url)
+        this.unsubscribe(url)
         this.closeHandler?.(url, event)
         return;
       }
@@ -180,12 +180,6 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
       await sleep(this.retryConfig.interval)
       this.subscribe(url)
     }
-  }
-
-  private unregister(url: string) {
-    this.eventSubscribers[url]?.offAll()
-    delete this.eventSubscribers[url]
-    delete this.retries[url]
   }
 
   subscribe<Url extends keyof Events = ''>(
@@ -214,6 +208,8 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
     const _url = url as string
     this.subscribers[_url]?.close()
     delete this.subscribers[_url]
+    delete this.eventSubscribers[_url]
+    delete this.retries[_url]
   }
 
   onError(onErrorComing: ErrorHandler<keyof Events>) {
