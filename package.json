@@ -1,6 +1,6 @@
 {
   "name": "sse-client-web",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Use Server Send Event by subscribe style",
   "main": "./lib/index.js",
   "module": "./lib/index.esm.js",
@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "tsc -b tsconfig.json && rollup --config && rm -rf ./lib/utils && rm -rf ./lib/lib",
-    "test": "npx vitest"
+    "test": "npx vitest run"
   },
   "author": "MeetinaXD",
   "license": "MIT",

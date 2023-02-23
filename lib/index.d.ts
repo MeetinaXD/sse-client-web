@@ -67,6 +67,7 @@ export declare class SSEClient<Events extends Record<string, SSEClientSubscriber
     private subscribers;
     private eventSubscribers;
     private errorHandler;
+    private closeHandler;
     private retries;
     private interceptor;
     constructor(config?: SSEClientConfig, interceptor?: SSEClientInterceptor<keyof Events>);
@@ -75,5 +76,6 @@ export declare class SSEClient<Events extends Record<string, SSEClientSubscriber
     subscribe<Url extends keyof Events = ''>(url: Url): SSEEventSubscriber<Events[Url]>;
     unsubscribe<Url extends keyof Events>(url: Url): void;
     onError(onErrorComing: ErrorHandler<keyof Events>): void;
+    onClose(onClose: ErrorHandler<keyof Events>): void;
 }
 export {};

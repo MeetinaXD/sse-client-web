@@ -59,6 +59,5 @@ export const server = http.createServer(function (req, res) {
 })
 
 export async function send(data: string) {
-  console.log('call', replyList.length)
   return await Promise.all(replyList.map(e => e.write(wrapData('message', data))))
 }
