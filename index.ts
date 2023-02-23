@@ -9,11 +9,12 @@
  * @license     MIT
  */
 
-import { forIn, usePromise } from './utils/tools'
+import mitt, { WildcardHandler } from 'mitt'
+import { usePromise } from './utils/tools'
 
 type Milliseconds = number
 type ComingMessageHandler<T = unknown> = (message: T) => void
-type ErrorHandler<T = unknown> = (url: T, message: Event) => void
+type ErrorHandler<T = unknown> = (url: T, message?: Event) => void
 type SSEClientInterceptor<R, T = unknown> = (url: R, event: string, message: T) => T | Promise<T> | null
 
 const sleep = (time: Milliseconds) => new Promise(resolve => {
@@ -49,17 +50,19 @@ Object.freeze(defaultRetryConfig)
 export type SSEClientSubscriberType = Record<string, unknown>
 
 export class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
-  private eventSubscribers: Record<string, ComingMessageHandler> = {}
+  private eventSubscribers: Map<keyof Events, ComingMessageHandler> = new Map()
   private waitPromise: Promise<unknown>
+  private emitter = mitt<Events>()
 
   constructor(
-    private readonly event: EventSource,
+    private readonly eventSource: EventSource,
     private readonly url?: string,
     private readonly interceptor?: SSEClientInterceptor<string>
   ) {
     const { promise, resolve } = usePromise()
     this.waitPromise = promise
-    event.onopen = resolve
+    eventSource.onopen = resolve
+    eventSource.addEventListener('message', this._onMessageComing('message'))
   }
 
   private _onMessageComing(name: string) {
@@ -76,55 +79,92 @@ export class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
         }
         data = ret
       }
-      this.eventSubscribers[name]?.(data)
+      this.emitter.emit(name, data)
     }
   }
 
   /**
    * register event
-   * @param event event in `MessageEvent`, use `'*'` to receive unnamed event.
-   * @param onMessageComing
+   * @param event event in `MessageEvent`, use `'*'` to receive all event, use `'message'` to receive unnamed event.
    */
+  on(event: '*', onMessageComing: WildcardHandler<Events>): this
+  on(event: 'message', onMessageComing: ComingMessageHandler): this
   on<EventName extends keyof Events>(
-    event: EventName | '*',
+    event: EventName,
     onMessageComing: ComingMessageHandler<Events[EventName]>
-  ) {
-    const name = event === '*' ? 'message' : event as string
-    this.eventSubscribers[name] = onMessageComing
-    this.event.addEventListener(name, this._onMessageComing(name))
+  ): this
+
+  on<EventName extends keyof Events>(
+    event: EventName | '*' | 'message',
+    onMessageComing: ComingMessageHandler<Events[EventName]> | ComingMessageHandler | WildcardHandler<Events>
+  ): this {
+    this.emitter.on(event, onMessageComing as any)
+    const name = event as string
+
+    if (
+      /**
+       * always ignore '*' and 'message' when adding / deleting listener
+       */
+      name !== '*'
+      && name !== 'message'
+      /**
+       * Each event in EventSource can only be added once.
+       * We use mitt to call all message handlers.
+       */
+      && !this.eventSubscribers.has(event)
+    ) {
+      const fn = this._onMessageComing(name)
+      this.eventSubscribers.set(event, fn)
+      this.eventSource.addEventListener(name, fn)
+    }
 
     return this
   }
 
   /**
    * unregister event
+   *
+   * use `'*'` for all events
    */
-  off<EventName extends keyof Events>(event: EventName) {
-    const name = event === '*' ? 'message' : event as string
-    this.event.removeEventListener(name, this.eventSubscribers[name])
-    delete this.eventSubscribers[name]
+  off(event: '*', onMessageComing: WildcardHandler<Events>): this
+  off(event: 'message', onMessageComing?: ComingMessageHandler): this
+  off<EventName extends keyof Events>(
+    event: EventName,
+    onMessageComing?: ComingMessageHandler<Events[EventName]>
+  ): this
+
+  off<EventName extends keyof Events>(
+    event: EventName | '*' | 'message',
+    onMessageComing: ComingMessageHandler<Events[EventName]> | ComingMessageHandler | WildcardHandler<Events>
+  ) {
+    const name = event as string
+    this.emitter.off(event, onMessageComing as any)
+
+    if (
+      /**
+       * always ignore '*' and 'message' when adding / deleting listener
+       */
+      name !== '*'
+      && name !== 'message'
+    ) {
+      const fn = this.eventSubscribers.get(event)
+      this.eventSource.removeEventListener(name, fn)
+    }
 
     return this
   }
 
   /**
    * unregister all events
+   *
+   * The same as using `off('*')`
    */
   offAll() {
-    forIn(this.eventSubscribers, (fn, name) => {
-      this.event.removeEventListener(name, fn)
+    this.emitter.off('*')
+    this.eventSubscribers.forEach((fn, name) => {
+      this.eventSource.removeEventListener(name as string, fn)
     })
-    this.eventSubscribers = {}
-  }
-
-  /**
-   * re-register all binding events
-   */
-  reRegister() {
-    forIn(this.eventSubscribers, (fn, name) => {
-      this.event.removeEventListener(name, fn)
-      this.event.addEventListener(name, fn)
-    })
+    this.eventSubscribers.clear()
   }
 
   /**
@@ -140,15 +180,15 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
 
   private baseURL: string
 
-  private subscribers: Record<string, EventSource> = {}
+  private subscribers: Map<keyof Events, EventSource> = new Map()
 
-  private eventSubscribers: Record<string, SSEEventSubscriber<any>> = {}
+  private eventSubscribers: WeakMap<EventSource, SSEEventSubscriber<any>> = new WeakMap()
 
   private errorHandler: ErrorHandler<keyof Events>
 
   private closeHandler: ErrorHandler<keyof Events>
 
-  private retries: Record<string, number> = {}
+  private retries: Map<keyof Events, number> = new Map()
 
   private interceptor: SSEClientInterceptor<string> = null
 
@@ -163,15 +203,20 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
     }
   }
 
-  private _onError(url: string) {
+  private _onError<Url extends keyof Events>(
+    url: Url
+  ) {
     return async (event: Event) => {
       this.errorHandler?.(url, event)
       this.unsubscribe(url)
 
-      this.retries[url] ??= 0
-      this.retries[url] += 1
-      if (this.retryConfig.retries && this.retries[url] >= this.retryConfig.retries) {
-        console.error(`[SSEClient] Too many retry, this url is no longer subscribed: ${this.baseURL}${url}`, event)
+      if (!this.retries.has(url)) {
+        this.retries.set(url, 0)
+      }
+
+      this.retries.set(url, this.retries.get(url) + 1)
+      if (this.retryConfig.retries && this.retries.get(url) >= this.retryConfig.retries) {
+        console.error(`[SSEClient] Too many retry, this url is no longer subscribed: ${this.baseURL}${url as string}`, event)
         this.unsubscribe(url)
         this.closeHandler?.(url, event)
         return;
@@ -182,34 +227,36 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
     }
   }
 
-  subscribe<Url extends keyof Events = ''>(
+  subscribe<Url extends keyof Events>(
     url: Url
   ): SSEEventSubscriber<Events[Url]> {
-    this.unsubscribe(url)
+    let subscriber = this.subscribers.get(url)
+    let eventSubscriber = this.eventSubscribers.get(subscriber)
 
-    const _url = url as string
-    const es = new EventSource(`${this.baseURL}${_url}`)
-    this.subscribers[_url] = es
-
-    let eventSubscriber = this.eventSubscribers[_url]
     if (eventSubscriber) {
-      eventSubscriber.reRegister()
-    } else {
-      eventSubscriber = new SSEEventSubscriber(es, _url, this.interceptor?.bind(this))
-      this.eventSubscribers[_url] = eventSubscriber
+      return eventSubscriber
     }
 
-    es.onerror = this._onError(url as string)
+    subscriber = new EventSource(`${this.baseURL}${url as string}`)
+    eventSubscriber = new SSEEventSubscriber(subscriber, url as string, this.interceptor?.bind(this))
+    this.subscribers.set(url, subscriber)
+    this.eventSubscribers.set(subscriber, eventSubscriber)
+
+    subscriber.onerror = this._onError(url as string)
 
     return eventSubscriber
   }
 
+  /**
+   * close the connection to server
+   */
   unsubscribe<Url extends keyof Events>(url: Url) {
-    const _url = url as string
-    this.subscribers[_url]?.close()
-    delete this.subscribers[_url]
-    delete this.eventSubscribers[_url]
-    delete this.retries[_url]
+    const subscriber = this.subscribers.get(url)
+    subscriber?.close()
+    this.closeHandler?.(url)
+    this.subscribers.delete(url)
+    this.retries.delete(url)
+    this.eventSubscribers.delete(subscriber)
   }
 
   onError(onErrorComing: ErrorHandler<keyof Events>) {
