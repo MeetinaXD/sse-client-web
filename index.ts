@@ -185,6 +185,7 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
   private unregister(url: string) {
     this.eventSubscribers[url]?.offAll()
     delete this.eventSubscribers[url]
+    delete this.retries[url]
   }
 
   subscribe<Url extends keyof Events = ''>(
