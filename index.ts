@@ -37,6 +37,15 @@ export interface SSEClientConfig {
    * `baseURL` will be prepended to `url` in `subscribe` or `unsubscribe`
    */
   baseURL?: string
+  /**
+   * `timeout` specifies the number of milliseconds before the next response times out.
+   * If the response takes longer than `timeout`, the subscribe will be cancelled.
+   *
+   * We recommend you add a heartbeat reply to ensure the connection is alive.
+   *
+   * set to 0 means no timeout. default is 60000(60 seconds). min detect interval is 100(ms)
+   */
+  timeout?: Milliseconds
   retry?: RetryConfig
 }
 
@@ -50,7 +59,7 @@ Object.freeze(defaultRetryConfig)
 export type SSEClientSubscriberType = Record<string, unknown>
 
 export class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
-  private eventSubscribers: Map<keyof Events, ComingMessageHandler> = new Map()
+  private eventSubscribers: Map<keyof Events, (event: MessageEvent) => void> = new Map()
   private waitPromise: Promise<unknown>
   private emitter = mitt<Events>()
 
@@ -73,7 +82,7 @@ export class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
       } catch { }
 
       if (this.interceptor) {
-        const ret = await this.interceptor(this.url, name, data)
+        const ret = await this.interceptor(this.url!, name, data)
         if (!ret) {
           return;
         }
@@ -135,7 +144,7 @@ export class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
 
   off<EventName extends keyof Events>(
     event: EventName | '*' | 'message',
-    onMessageComing: ComingMessageHandler<Events[EventName]> | ComingMessageHandler | WildcardHandler<Events>
+    onMessageComing?: ComingMessageHandler<Events[EventName]> | ComingMessageHandler | WildcardHandler<Events>
   ) {
     const name = event as string
     this.emitter.off(event, onMessageComing as any)
@@ -148,7 +157,7 @@ export class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
       && name !== 'message'
     ) {
       const fn = this.eventSubscribers.get(event)
-      this.eventSource.removeEventListener(name, fn)
+      this.eventSource.removeEventListener(name, fn!)
     }
 
     return this
@@ -176,6 +185,8 @@ export class SSEEventSubscriber<Events extends SSEClientSubscriberType> {
 }
 
 export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
+  private readonly timeout?: Milliseconds
+
   private retryConfig = defaultRetryConfig
 
   private baseURL: string
@@ -184,22 +195,31 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
 
   private eventSubscribers: WeakMap<EventSource, SSEEventSubscriber<any>> = new WeakMap()
 
-  private errorHandler: ErrorHandler<keyof Events>
+  private lastEventTime: Map<keyof Events, Date> = new Map()
 
-  private closeHandler: ErrorHandler<keyof Events>
+  private timeoutHandler?: ErrorHandler
+
+  private errorHandler?: ErrorHandler<keyof Events>
+
+  private closeHandler?: ErrorHandler<keyof Events>
 
   private retries: Map<keyof Events, number> = new Map()
 
-  private interceptor: SSEClientInterceptor<string> = null
+  private interceptor?: SSEClientInterceptor<string>
 
   constructor(config?: SSEClientConfig, interceptor?: SSEClientInterceptor<keyof Events>) {
     this.baseURL = config?.baseURL ?? ''
     this.interceptor = interceptor
+    this.timeout = config?.timeout ?? 60000
     if (config?.retry) {
       this.retryConfig = {
         ...this.retryConfig,
         ...config.retry
       }
+    }
+
+    if (this.timeout) {
+      setInterval(this._checkEventTime.bind(this), 100)
     }
   }
 
@@ -214,8 +234,8 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
         this.retries.set(url, 0)
       }
 
-      this.retries.set(url, this.retries.get(url) + 1)
-      if (this.retryConfig.retries && this.retries.get(url) >= this.retryConfig.retries) {
+      this.retries.set(url, this.retries.get(url)! + 1)
+      if (this.retryConfig.retries && this.retries.get(url)! >= this.retryConfig.retries) {
         console.error(`[SSEClient] Too many retry, this url is no longer subscribed: ${this.baseURL}${url as string}`, event)
         this.unsubscribe(url)
         this.closeHandler?.(url, event)
@@ -227,18 +247,42 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
     }
   }
 
+  private _checkEventTime() {
+    const now = Date.now()
+    this.lastEventTime.forEach((time, url) => {
+      if (now - time.getTime() > this.timeout!) {
+        this.timeoutHandler?.(url)
+        this.unsubscribe(url)
+      }
+    })
+  }
+
+  private _onMessageComing(
+    url: string
+  ): SSEClientInterceptor<string> | undefined {
+    return (_, event, message) => {
+      this.lastEventTime.set(url, new Date())
+      if (this.interceptor) {
+        return this.interceptor(url, event, message)
+      }
+      return message
+    }
+  }
+
   subscribe<Url extends keyof Events>(
     url: Url
   ): SSEEventSubscriber<Events[Url]> {
     let subscriber = this.subscribers.get(url)
-    let eventSubscriber = this.eventSubscribers.get(subscriber)
-
-    if (eventSubscriber) {
-      return eventSubscriber
+    let eventSubscriber: SSEEventSubscriber<Events[Url]> | undefined
+    if (subscriber) {
+      eventSubscriber = this.eventSubscribers.get(subscriber)
+      if (eventSubscriber) {
+        return eventSubscriber
+      }
     }
 
     subscriber = new EventSource(`${this.baseURL}${url as string}`)
-    eventSubscriber = new SSEEventSubscriber(subscriber, url as string, this.interceptor?.bind(this))
+    eventSubscriber = new SSEEventSubscriber(subscriber, url as string, this._onMessageComing(url as string))
     this.subscribers.set(url, subscriber)
     this.eventSubscribers.set(subscriber, eventSubscriber)
 
@@ -252,11 +296,19 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
    */
   unsubscribe<Url extends keyof Events>(url: Url) {
     const subscriber = this.subscribers.get(url)
+    if (!subscriber) {
+      return;
+    }
     subscriber?.close()
     this.closeHandler?.(url)
     this.subscribers.delete(url)
     this.retries.delete(url)
+    this.lastEventTime.delete(url)
     this.eventSubscribers.delete(subscriber)
+  }
+
+  onTimeout(timeoutHandler: ErrorHandler) {
+    this.timeoutHandler = timeoutHandler
   }
 
   onError(onErrorComing: ErrorHandler<keyof Events>) {

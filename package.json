@@ -1,6 +1,6 @@
 {
   "name": "sse-client-web",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Use Server Send Event by subscribe style",
   "main": "./lib/index.js",
   "module": "./lib/index.esm.js",
@@ -35,5 +35,8 @@
       "require": "./lib/index.js",
       "browser": "./lib/index.browser.js"
     }
+  },
+  "dependencies": {
+    "mitt": "^3.0.0"
   }
 }

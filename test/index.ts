@@ -19,7 +19,7 @@ const waitForCallOnce = async (fn: MockInstance, afterHook?: () => any, beforeRe
   const rawFn = fn.getMockImplementation()
   fn.mockImplementationOnce(async (...args) => {
     await rawFn?.call(undefined, args)
-    resolve()
+    resolve('')
     try {
       await beforeRestore?.()
     } finally {
@@ -48,7 +48,7 @@ it('with subscribe', async () => {
   let spy = vi.fn()
 
   const es = new SSEClient()
-  const subscriber = es.subscribe(`http://127.0.0.1:${port}/trigger`).on('*', spy)
+  const subscriber = es.subscribe(`http://127.0.0.1:${port}/trigger`).on('message', spy)
   await subscriber.waitUntilOpened()
 
   await waitForCallOnce(spy,
