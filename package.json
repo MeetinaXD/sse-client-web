@@ -1,6 +1,6 @@
 {
   "name": "sse-client-web",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Use Server Send Event by subscribe style",
   "main": "./lib/index.js",
   "module": "./lib/index.esm.js",
@@ -12,6 +12,10 @@
     "build": "tsc -b tsconfig.json && rollup --config && rm -rf ./lib/utils && rm -rf ./lib/lib",
     "test": "npx vitest run"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MeetinaXD/sse-client-web"
+  },
   "author": "MeetinaXD",
   "license": "MIT",
   "keywords": [
@@ -19,6 +23,8 @@
     "Server Send Event"
   ],
   "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.0.1",
+    "@rollup/plugin-terser": "^0.4.0",
     "@rollup/plugin-typescript": "^11.0.0",
     "@types/supertest": "^2.0.12",
     "eventsource": "^2.0.2",
