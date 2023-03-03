@@ -238,6 +238,7 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
       if (this.retryConfig.retries && this.retries.get(url)! >= this.retryConfig.retries) {
         console.error(`[SSEClient] Too many retry, this url is no longer subscribed: ${this.baseURL}${url as string}`, event)
         this.unsubscribe(url)
+        this.retries.delete(url)
         this.closeHandler?.(url, event)
         return;
       }
@@ -302,7 +303,6 @@ export class SSEClient<Events extends Record<string, SSEClientSubscriberType>> {
     subscriber?.close()
     this.closeHandler?.(url)
     this.subscribers.delete(url)
-    this.retries.delete(url)
     this.lastEventTime.delete(url)
     this.eventSubscribers.delete(subscriber)
   }
