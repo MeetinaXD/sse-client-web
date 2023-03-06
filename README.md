@@ -5,9 +5,9 @@
 
 ## Why?
 
-Unlike normal HTTP request, `SSE(Server Sent Events)` doesn't have many library to use.
+Compared to normal HTTP request, there are fewer libraries available for SSE (Server Sent Events).
 
-As an `axios` user, I'm looking for a way to use SSE like I did in axios.
+As an `axios` user, I'm looking for a way to use SSE as I did with axios.
 
 This package makes your work slightly easier.
 
@@ -270,17 +270,6 @@ Cancel listening ALL types of event.
 
 ```ts
 offAll(): void
-```
-
-
-### `SSEEventSubscriber.reRegister()`
-
-Re-listening all types of event.
-
-- Type
-
-```ts
-reRegister(): void
 ```
 
 
